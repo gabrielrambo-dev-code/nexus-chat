@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nexus Chat</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Whitney:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <!-- Titlebar drag region for Electron -->
+    <div id="titlebar">
+      <div class="titlebar-left">
+        <div class="traffic">
+          <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+        </div>
+        <span class="app-name">Nexus Chat</span>
+        <span id="titlebar-status" class="titlebar-status">— desconectado</span>
+      </div>
+      <div class="titlebar-right">
+        <button id="btn-update" class="tbtn" title="Verificar atualização">⬇️ Atualizar</button>
+        <button id="btn-host-config" class="tbtn" title="Configurar host">⚙️ Hospedar</button>
+        <button id="btn-invite" class="tbtn" title="Copiar convite">🔗 Convite</button>
+      </div>
+    </div>
+
+    <!-- Login overlay -->
+    <div id="login-overlay" class="overlay">
+      <div class="login-card">
+        <div class="login-hero">
+          <div class="logo">⬡</div>
+          <h1>Nexus Chat</h1>
+          <p>Converse. Jogue. Compartilhe.</p>
+        </div>
+        <div class="login-form">
+          <label>Como quer ser chamado?</label>
+          <input id="input-username" maxlength="20" placeholder="Seu nome" autofocus />
+          <label>Servidor do host</label>
+          <div class="row">
+            <input id="input-host" placeholder="ws://192.168.1.10:8765" value="ws://localhost:8765" />
+            <button id="btn-test-host" class="btn ghost" title="Testar">↻</button>
+          </div>
+          <p class="hint">
+            Se você é o host, clique em
+            <b>Hospedar → Iniciar servidor</b> e deixe o IP visível para seus amigos. Se você é convidado, cole aqui o endereço do host.
+          </p>
+          <div class="host-actions">
+            <div class="host-box">
+              <div class="host-label">Status do servidor local</div>
+              <div id="host-status-line" class="host-status">Parado</div>
+              <div class="row gap8">
+                <input id="input-port" type="number" value="8765" min="1024" max="65535" style="width: 110px" />
+                <button id="btn-start-host" class="btn primary">Iniciar servidor</button>
+                <button id="btn-stop-host" class="btn ghost" style="display: none">Parar</button>
+              </div>
+              <div id="host-ips" class="hint"></div>
+            </div>
+          </div>
+          <button id="btn-connect" class="btn primary large">Entrar no Nexus →</button>
+          <div id="login-error" class="error"></div>
+          <div class="login-foot">
+            Servidor roda no PC de quem abrir a call — sem nuvem, sem conta, conexão direta.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- App -->
+    <div id="app" class="hidden">
+      <!-- Servers rail -->
+      <nav id="rail">
+        <div class="rail-home" id="rail-home" title="Início">⬡</div>
+        <div class="rail-sep"></div>
+        <div id="rail-servers"></div>
+        <button id="btn-add-server" class="rail-add" title="Criar servidor">＋</button>
+        <button id="btn-join-server" class="rail-join" title="Entrar com código">⌖</button>
+        <div class="rail-bottom">
+          <div id="connection-dot" class="conn-dot" title="Conectado"></div>
+        </div>
+      </nav>
+
+      <!-- Sidebar -->
+      <aside id="sidebar">
+        <div id="server-header">
+          <span id="server-name">—</span>
+          <button id="btn-server-menu" class="icon-btn">▾</button>
+        </div>
+        <div class="sidebar-scroll">
+          <div class="chan-group">
+            <div class="chan-head">
+              <span>CANAIS DE TEXTO</span><button data-create="text" class="chan-add">＋</button>
+            </div>
+            <div id="text-channels"></div>
+          </div>
+          <div class="chan-group">
+            <div class="chan-head">
+              <span>CANAIS DE VOZ</span><button data-create="voice" class="chan-add">＋</button>
+            </div>
+            <div id="voice-channels"></div>
+          </div>
+          <div id="voice-panel" class="voice-panel hidden">
+            <div class="vp-status"><span class="vp-dot"></span><span id="vp-text">Conectado em Bate-papo</span></div>
+            <div class="vp-actions">
+              <button id="btn-mic" class="vp-btn active" title="Microfone (M)">🎙️</button>
+              <button id="btn-deaf" class="vp-btn" title="Fone">🎧</button>
+              <button id="btn-screen" class="vp-btn" title="Compartilhar tela">🖥️</button>
+              <button id="btn-leave" class="vp-btn danger" title="Desconectar">✕</button>
+            </div>
+            <div class="quality-row">
+              <label>Qualidade</label>
+              <select id="select-quality">
+                <option value="720p30">720p · 30fps · Médio</option>
+                <option value="1080p30">1080p · 30fps · Alto</option>
+                <option value="1080p60">1080p · 60fps · Ultra</option>
+                <option value="480p30">480p · 30fps · Leve</option>
+                <option value="source">Original · 60fps</option>
+              </select>
+              <select id="select-fps" title="FPS">
+                <option value="15">15 fps</option>
+                <option value="30" selected>30 fps</option>
+                <option value="60">60 fps</option>
+              </select>
+            </div>
+            <div class="share-type-row">
+              <button data-share="screen" class="seg active">Tela do PC</button>
+              <button data-share="window" class="seg">Janela de App</button>
+            </div>
+          </div>
+        </div>
+        <div id="user-bar">
+          <div id="user-avatar" class="avatar">?</div>
+          <div class="user-info">
+            <div id="user-name">Você</div>
+            <div id="user-status">Online</div>
+          </div>
+          <button id="btn-settings" class="icon-btn" title="Configurações">⚙️</button>
+        </div>
+      </aside>
+
+      <!-- Main -->
+      <main id="main">
+        <header id="main-header">
+          <div class="mh-left">
+            <span id="main-hash">#</span><span id="main-title">geral</span>
+            <span id="main-topic" class="topic">Canal de texto</span>
+          </div>
+          <div class="mh-right">
+            <button class="mh-btn" title="Notificações">🔔</button>
+            <button class="mh-btn" title="Fixados">📌</button>
+            <button class="mh-btn" title="Membros" id="btn-toggle-members">👥</button>
+            <div class="search"><input placeholder="Buscar" disabled /><span>🔍</span></div>
+            <button class="mh-btn" title="Ajuda">❔</button>
+          </div>
+        </header>
+
+        <!-- Text view -->
+        <div id="chat-view">
+          <div id="chat-scroll">
+            <div id="chat-list"></div>
+          </div>
+          <div id="typing-indicator"></div>
+          <div id="composer">
+            <button class="comp-btn">＋</button>
+            <input id="input-message" placeholder="Enviar mensagem em #geral" autocomplete="off" />
+            <div class="comp-actions">
+              <button class="comp-btn" title="GIF">GIF</button>
+              <button class="comp-btn" title="Emoji">😊</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Voice view -->
+        <div id="voice-view" class="hidden">
+          <div id="voice-grid"></div>
+          <div id="screen-stage" class="hidden">
+            <div class="stage-head">
+              <span id="stage-title">Tela de —</span>
+              <div>
+                <button id="btn-stage-quality" class="btn tiny">Qualidade</button>
+                <button id="btn-stage-close" class="btn tiny ghost">Fechar</button>
+              </div>
+            </div>
+            <div id="stage-wrap"></div>
+          </div>
+        </div>
+      </main>
+
+      <!-- Members -->
+      <aside id="members">
+        <div id="members-list"></div>
+      </aside>
+    </div>
+
+    <!-- Modals -->
+    <dialog id="modal-create-server">
+      <form method="dialog" class="modal">
+        <h3>Criar servidor</h3>
+        <p class="hint">Seu servidor roda no seu PC. Convide amigos com o código.</p>
+        <input id="input-new-server" placeholder="Nome do servidor" maxlength="32" />
+        <div class="modal-actions">
+          <button value="cancel" class="btn ghost">Cancelar</button>
+          <button value="confirm" class="btn primary">Criar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="modal-join-server">
+      <form method="dialog" class="modal">
+        <h3>Entrar com código</h3>
+        <p class="hint">Cole o código do servidor (ex: 4F9K2Q)</p>
+        <input id="input-join-code" placeholder="Código" maxlength="12" />
+        <div class="modal-actions">
+          <button value="cancel" class="btn ghost">Cancelar</button>
+          <button value="confirm" class="btn primary">Entrar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="modal-create-channel">
+      <form method="dialog" class="modal">
+        <h3>Criar canal</h3>
+        <div class="seg-row">
+          <button type="button" data-ctype="text" class="seg active"># Texto</button>
+          <button type="button" data-ctype="voice" class="seg">🔊 Voz</button>
+        </div>
+        <input id="input-new-channel" placeholder="nome-do-canal" maxlength="24" />
+        <div class="modal-actions">
+          <button value="cancel" class="btn ghost">Cancelar</button>
+          <button value="confirm" class="btn primary">Criar canal</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="modal-screen-picker">
+      <div class="modal wide">
+        <h3>Compartilhar tela</h3>
+        <div class="seg-row">
+          <button data-spick="screen" class="seg active">Tela do PC</button>
+          <button data-spick="window" class="seg">Janela / App</button>
+        </div>
+        <div id="screen-thumb-grid" class="thumb-grid"></div>
+        <div class="quality-row">
+          <select id="pick-quality">
+            <option value="720p30">720p · 30fps</option>
+            <option value="1080p30" selected>1080p · 30fps</option>
+            <option value="1080p60">1080p · 60fps</option>
+            <option value="480p30">480p · 15fps (leve)</option>
+            <option value="source">Original</option>
+          </select>
+          <label class="check"><input type="checkbox" id="pick-audio" checked /> Incluir áudio do sistema</label>
+        </div>
+        <div class="modal-actions">
+          <button id="btn-picker-cancel" class="btn ghost">Cancelar</button>
+          <button id="btn-picker-share" class="btn primary">Compartilhar</button>
+        </div>
+      </div>
+    </dialog>
+
+    <div id="toast"></div>
+
+    <dialog id="modal-update">
+      <div class="modal">
+        <h3>Atualização</h3>
+        <div id="update-info" class="hint">Verificando…</div>
+        <div id="update-progress" style="display:none">
+          <div style="background:#2b2d31;border-radius:6px;overflow:hidden;height:10px;margin:8px 0">
+            <div id="update-bar" style="height:100%;width:0%;background:#5865f2;transition:.2s"></div>
+          </div>
+          <div id="update-percent" class="hint">0%</div>
+        </div>
+        <div class="modal-actions">
+          <button id="btn-update-close" class="btn ghost">Fechar</button>
+          <button id="btn-update-action" class="btn primary" style="display:none">Baixar</button>
+          <button id="btn-update-install" class="btn primary" style="display:none">Reiniciar e instalar</button>
+          <button id="btn-git-pull" class="btn ghost" style="display:none">git pull (dev)</button>
+        </div>
+      </div>
+    </dialog>
+
+    <script type="module" src="./app.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,72 @@
+{
+  "name": "nexus-chat",
+  "version": "1.0.1",
+  "description": "Nexus Chat — Discord-like app com voz, tela e qualidade selecionável. Servidor roda no PC do host.",
+  "main": "dist-electron/main.js",
+  "author": "Nexus",
+  "type": "commonjs",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gabrielrambo-dev-code/nexus-chat.git"
+  },
+  "scripts": {
+    "dev": "vite",
+    "dev:electron": "npm run build:electron && cross-env NODE_ENV=development electron .",
+    "build": "vite build && npm run build:electron",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "build:exe": "vite build && tsc -p tsconfig.electron.json && electron-builder --win nsis --x64",
+    "build:win": "vite build && tsc -p tsconfig.electron.json && electron-builder --win --x64",
+    "preview": "vite preview",
+    "lint": "tsc --noEmit",
+    "release": "vite build && tsc -p tsconfig.electron.json && electron-builder --win nsis --x64 --publish always",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "build": {
+    "appId": "com.nexus.chat",
+    "productName": "Nexus Chat",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "src/assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "gabrielrambo-dev-code",
+        "repo": "nexus-chat",
+        "private": false
+      }
+    ]
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.13",
+    "cross-env": "^7.0.3",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.5"
+  }
+}
