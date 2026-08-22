@@ -49,23 +49,34 @@ export function setupUpdater(getWin: () => BrowserWindow | null) {
     });
   });
   autoUpdater.on("error", (err) => {
-    send("updater:status", { type: "error", message: err?.message || String(err) });
+    const msg = err?.message || String(err);
+    // 404 em repo privado/sem releases é comum — não assusta o usuário, trata como "sem atualização"
+    if (msg.includes("404") || msg.includes("releases.atom") || msg.includes("authentication token")) {
+      console.warn("[Updater] 404 (repo sem releases ou privado sem token) — ignorado:", msg.slice(0, 200));
+      send("updater:status", { type: "not-available", version: app.getVersion(), note: "Sem releases públicas ainda — app já está atualizado" });
+      return;
+    }
+    send("updater:status", { type: "error", message: msg });
   });
 
   // IPC
   ipcMain.handle("updater:check", async () => {
     if (!isPackaged) {
-      // modo dev: tenta git pull como fallback
       return await checkGitUpdate();
     }
     try {
       const res = await autoUpdater.checkForUpdates();
       return { ok: true, updateInfo: res?.updateInfo ?? null, isPackaged };
     } catch (e: any) {
-      // fallback: tenta GitHub API direta
+      const msg = e?.message || String(e);
+      // 404 sem releases ou repo recém-tornado público -> não é erro, só sem update
+      if (msg.includes("404") || msg.includes("releases.atom") || msg.includes("authentication token")) {
+        const git = await checkGitHubAPI();
+        return { ok: true, updateInfo: null, note: "Nenhuma atualização — app já está na última versão", fallback: git, isPackaged };
+      }
       const git = await checkGitHubAPI();
-      if (git.hasUpdate) return { ok: true, fallback: git, error: e?.message };
-      return { ok: false, error: e?.message || String(e) };
+      if (git.hasUpdate) return { ok: true, fallback: git, error: msg };
+      return { ok: false, error: msg };
     }
   });
 

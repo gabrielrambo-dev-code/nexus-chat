@@ -52,7 +52,7 @@
         "provider": "github",
         "owner": "gabrielrambo-dev-code",
         "repo": "nexus-chat",
-        "private": true
+        "private": false
       }
     ]
   },
