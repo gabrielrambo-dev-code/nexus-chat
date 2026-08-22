@@ -6,6 +6,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getHostStatus: () => ipcRenderer.invoke("app:getHostStatus"),
   startHost: (port: number) => ipcRenderer.invoke("host:start", port),
   stopHost: () => ipcRenderer.invoke("host:stop"),
+  startTunnel: (port: number) => ipcRenderer.invoke("tunnel:start", port),
+  stopTunnel: () => ipcRenderer.invoke("tunnel:stop"),
+  getTunnelStatus: () => ipcRenderer.invoke("tunnel:status"),
+  allowFirewall: (port: number) => ipcRenderer.invoke("firewall:allow", port),
   getDesktopSources: (types: ("screen" | "window")[]) => ipcRenderer.invoke("desktop:getSources", { types }),
   onHostBroadcast: (cb: (data: any) => void) => {
     const handler = (_e: any, data: any) => cb(data);
@@ -38,6 +42,10 @@ declare global {
       getHostStatus: () => Promise<any>;
       startHost: (port: number) => Promise<any>;
       stopHost: () => Promise<any>;
+      startTunnel: (port: number) => Promise<any>;
+      stopTunnel: () => Promise<any>;
+      getTunnelStatus: () => Promise<any>;
+      allowFirewall: (port: number) => Promise<any>;
       getDesktopSources: (types: ("screen" | "window")[]) => Promise<{ id: string; name: string; thumbnail: string; displayId: string }[]>;
       onHostBroadcast: (cb: (data: any) => void) => () => void;
       checkUpdate: () => Promise<any>;

@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import { HostServer } from "./server";
 import { setupUpdater } from "./updater";
+import { startTunnel, stopTunnel, getTunnelStatus, ensureFirewallRule } from "./tunnel";
 
 let win: BrowserWindow | null = null;
 let hostServer: HostServer | null = null;
@@ -68,18 +69,17 @@ function createWindow() {
   });
 
   win.on("close", (e) => {
-    // se o servidor está rodando, faz shutdown gracioso e só depois fecha
     if (!isQuitting && hostServer?.isRunning()) {
       e.preventDefault();
       isQuitting = true;
-      hostServer.stop().catch(() => {}).finally(() => {
+      Promise.all([hostServer.stop().catch(() => {}), stopTunnel().catch(() => {})]).finally(() => {
         hostServer = null;
-        // garante que o app não fique preso — força quit após timeout
         setTimeout(() => app.exit(0), 400);
         app.quit();
       });
-      // se por algum motivo não quitou em 2s, força
       setTimeout(() => { if (!app.isReady() || win) try { app.exit(0); } catch {} }, 2000);
+    } else {
+      stopTunnel().catch(() => {});
     }
   });
 
@@ -104,22 +104,42 @@ app.whenReady().then(() => {
 
   ipcMain.handle("app:getVersion", () => app.getVersion());
   ipcMain.handle("app:getIPs", () => getLocalIPs());
-  ipcMain.handle("app:getHostStatus", () => hostServer?.getStatus() ?? { running: false, port: 0, ips: [] });
+  ipcMain.handle("app:getHostStatus", () => ({ ...(hostServer?.getStatus() ?? { running: false, port: 0, ips: [] }), tunnel: getTunnelStatus() }));
 
   ipcMain.handle("host:start", async (_e: any, port: number) => {
-    if (hostServer?.isRunning()) return hostServer.getStatus();
+    if (hostServer?.isRunning()) return { ...hostServer.getStatus(), tunnel: getTunnelStatus() };
     hostServer = new HostServer(port, app.getPath("userData"));
     await hostServer.start();
     hostServer.onBroadcast((data: any) => {
       try { win?.webContents.send("host:broadcast", data); } catch {}
     });
-    return hostServer.getStatus();
+    return { ...hostServer.getStatus(), tunnel: getTunnelStatus() };
   });
 
   ipcMain.handle("host:stop", async () => {
     await hostServer?.stop().catch(()=>{});
+    await stopTunnel().catch(()=>{});
     hostServer = null;
-    return { running: false };
+    return { running: false, tunnel: getTunnelStatus() };
+  });
+
+  ipcMain.handle("tunnel:start", async (_e: any, port: number) => {
+    if (!hostServer?.isRunning()) throw new Error("Inicie o servidor local primeiro");
+    const res = await startTunnel(port);
+    return { ...res, status: getTunnelStatus() };
+  });
+  ipcMain.handle("tunnel:stop", async () => {
+    await stopTunnel();
+    return getTunnelStatus();
+  });
+  ipcMain.handle("tunnel:status", () => getTunnelStatus());
+
+  ipcMain.handle("firewall:allow", async (_e: any, port: number) => {
+    return await ensureFirewallRule(port);
+  });
+  ipcMain.handle("firewall:check", async (_e: any, port: number) => {
+    const { checkFirewallRule } = await import("./tunnel");
+    return await checkFirewallRule(port);
   });
 
   ipcMain.handle("desktop:getSources", async (_e: any, opts: { types: ("screen" | "window")[] }) => {
@@ -143,25 +163,24 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
-    // se já estamos fazendo quit gracioso, não chama de novo
     if (!isQuitting) app.quit();
   }
 });
 
 app.on("before-quit", (e) => {
-  if (!hostServer?.isRunning() || isQuitting) return;
-  // já tratado no win.on('close'), mas garante caso feche por menu/tray
+  if (!hostServer?.isRunning() || isQuitting) {
+    stopTunnel().catch(()=>{});
+    return;
+  }
   e.preventDefault();
   isQuitting = true;
-  hostServer.stop().catch(()=>{}).finally(() => {
+  Promise.all([hostServer.stop().catch(()=>{}), stopTunnel().catch(()=>{})]).finally(() => {
     hostServer = null;
     app.quit();
   });
-  // fallback — nunca deixar travado
   setTimeout(() => { try { app.exit(0); } catch {} }, 1500);
 });
 
 app.on("will-quit", () => {
-  // desativa listeners para não travar
   try { win?.removeAllListeners(); } catch {}
 });

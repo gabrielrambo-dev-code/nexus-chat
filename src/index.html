@@ -9,7 +9,6 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <!-- Titlebar drag region for Electron -->
     <div id="titlebar">
       <div class="titlebar-left">
         <div class="traffic">
@@ -25,7 +24,6 @@
       </div>
     </div>
 
-    <!-- Login overlay -->
     <div id="login-overlay" class="overlay">
       <div class="login-card">
         <div class="login-hero">
@@ -38,12 +36,11 @@
           <input id="input-username" maxlength="20" placeholder="Seu nome" autofocus />
           <label>Servidor do host</label>
           <div class="row">
-            <input id="input-host" placeholder="ws://192.168.1.10:8765" value="ws://localhost:8765" />
+            <input id="input-host" placeholder="ws://192.168.1.10:8765 ou https://xxx.loca.lt" value="ws://localhost:8765" />
             <button id="btn-test-host" class="btn ghost" title="Testar">↻</button>
           </div>
           <p class="hint">
-            Se você é o host, clique em
-            <b>Hospedar → Iniciar servidor</b> e deixe o IP visível para seus amigos. Se você é convidado, cole aqui o endereço do host.
+            Cole o <b>convite do host</b> (IP local ou link <b>loca.lt</b> para internet). Host: <b>Hospedar → Iniciar servidor</b>.
           </p>
           <div class="host-actions">
             <div class="host-box">
@@ -55,20 +52,19 @@
                 <button id="btn-stop-host" class="btn ghost" style="display: none">Parar</button>
               </div>
               <div id="host-ips" class="hint"></div>
+              <div id="tunnel-box" class="hint" style="display:none; margin-top:8px; padding:8px; background:#1e1f22; border-radius:8px; border:1px solid #232428"></div>
             </div>
           </div>
           <button id="btn-connect" class="btn primary large">Entrar no Nexus →</button>
           <div id="login-error" class="error"></div>
           <div class="login-foot">
-            Servidor roda no PC de quem abrir a call — sem nuvem, sem conta, conexão direta.
+            Servidor roda no PC do host — amigos na mesma Wi-Fi usam IP local, amigos de outra rede usam o <b>túnel internet</b>.
           </div>
         </div>
       </div>
     </div>
 
-    <!-- App -->
     <div id="app" class="hidden">
-      <!-- Servers rail -->
       <nav id="rail">
         <div class="rail-home" id="rail-home" title="Início">⬡</div>
         <div class="rail-sep"></div>
@@ -80,7 +76,6 @@
         </div>
       </nav>
 
-      <!-- Sidebar -->
       <aside id="sidebar">
         <div id="server-header">
           <span id="server-name">—</span>
@@ -138,7 +133,6 @@
         </div>
       </aside>
 
-      <!-- Main -->
       <main id="main">
         <header id="main-header">
           <div class="mh-left">
@@ -154,7 +148,6 @@
           </div>
         </header>
 
-        <!-- Text view -->
         <div id="chat-view">
           <div id="chat-scroll">
             <div id="chat-list"></div>
@@ -170,7 +163,6 @@
           </div>
         </div>
 
-        <!-- Voice view -->
         <div id="voice-view" class="hidden">
           <div id="voice-grid"></div>
           <div id="screen-stage" class="hidden">
@@ -186,13 +178,11 @@
         </div>
       </main>
 
-      <!-- Members -->
       <aside id="members">
         <div id="members-list"></div>
       </aside>
     </div>
 
-    <!-- Modals -->
     <dialog id="modal-create-server">
       <form method="dialog" class="modal">
         <h3>Criar servidor</h3>
@@ -253,6 +243,56 @@
         <div class="modal-actions">
           <button id="btn-picker-cancel" class="btn ghost">Cancelar</button>
           <button id="btn-picker-share" class="btn primary">Compartilhar</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="modal-invite">
+      <div class="modal wide">
+        <h3>Convidar amigos</h3>
+        <p class="hint" id="invite-subtitle">Escolha como seus amigos vão entrar. Porta atual: <b id="invite-port">8765</b></p>
+
+        <div style="display:grid; gap:12px; margin-top:8px">
+          <div style="background:#2b2d31; border:1px solid #232428; border-radius:10px; padding:12px">
+            <div style="font-weight:700; display:flex; align-items:center; gap:8px">🏠 Mesma Wi-Fi / Rede local <span style="font-size:11px; background:#23a559; color:white; padding:2px 6px; border-radius:10px">RÁPIDO</span></div>
+            <div class="hint" style="margin:6px 0">Funciona instantâneo se todos estão na mesma rede. Copie e envie no WhatsApp/Discord.</div>
+            <div id="invite-local-list" style="display:flex; flex-direction:column; gap:6px; margin-top:8px"></div>
+            <div class="row" style="margin-top:8px">
+              <button id="btn-invite-local-copy" class="btn primary">Copiar convite local</button>
+              <button id="btn-test-local" class="btn ghost">Testar conexão</button>
+            </div>
+            <div id="invite-local-test" class="hint" style="margin-top:6px"></div>
+          </div>
+
+          <div style="background:#2b2d31; border:1px solid #232428; border-radius:10px; padding:12px">
+            <div style="font-weight:700; display:flex; align-items:center; gap:8px">🌐 Internet (outra rede/cidade) <span style="font-size:11px; background:#5865f2; color:white; padding:2px 6px; border-radius:10px">TÚNEL</span></div>
+            <div class="hint" style="margin:6px 0">Para amigos em outra Wi-Fi/4G. Cria um link público <b>https://xxx.loca.lt</b> que atravessa NAT/firewall sozinho.</div>
+            <div id="invite-tunnel-info" class="hint" style="margin:6px 0; padding:8px; background:#1e1f22; border-radius:8px; border:1px dashed #404249">Túnel parado — clique em “Expor na internet” para gerar o link.</div>
+            <div class="row" style="margin-top:8px; flex-wrap:wrap">
+              <button id="btn-tunnel-start" class="btn primary">🚀 Expor na internet</button>
+              <button id="btn-tunnel-stop" class="btn ghost" style="display:none">Parar túnel</button>
+              <button id="btn-tunnel-copy" class="btn ghost" style="display:none">Copiar link internet</button>
+              <button id="btn-test-tunnel" class="btn ghost" style="display:none">Testar</button>
+            </div>
+            <div id="invite-tunnel-test" class="hint" style="margin-top:6px"></div>
+          </div>
+
+          <div style="background:#1e1f22; border:1px solid #232428; border-radius:10px; padding:10px">
+            <div style="font-weight:700; font-size:12px">🛡️ Firewall</div>
+            <div class="hint">Se amigos na mesma Wi-Fi ainda veem “tempo esgotado”, libere a porta.</div>
+            <div class="row" style="margin-top:6px">
+              <button id="btn-firewall" class="btn ghost">Liberar Firewall (Windows)</button>
+              <span id="firewall-status" class="hint"></span>
+            </div>
+          </div>
+
+          <div class="hint" style="font-size:11px; line-height:1.4">
+            <b>Dica:</b> convite local é <code>ws://IP:porta</code> e túnel é <code>wss://xxx.loca.lt</code>. Amigos colam no campo <b>Servidor do host</b> e entram com o nome. Sem conta.
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button id="btn-invite-close" class="btn ghost">Fechar</button>
         </div>
       </div>
     </dialog>

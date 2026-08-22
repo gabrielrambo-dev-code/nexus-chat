@@ -63,6 +63,7 @@ const loginError = qs("#login-error");
 // ---------- Host controls (Electron) ----------
 async function refreshHostStatus() {
   const api: any = (window as any).electronAPI;
+  const tunnelBox = qs("#tunnel-box") as HTMLElement;
   if (!api) { hostStatusLine.textContent = "Modo navegador — inicie um servidor externo se quiser hospedar"; hostStatusLine.style.color = "#949ba4"; return; }
   try {
     const st = await api.getHostStatus();
@@ -72,13 +73,21 @@ async function refreshHostStatus() {
       hostStatusLine.style.color = "#23a559";
       btnStartHost.style.display = "none"; btnStopHost.style.display = "";
       hostIpsEl.textContent = `Convide amigos com: ws://${ips[0]}:${st.port}  •  IPs: ${ips.join(", ")}`;
-      // auto fill host input if localhost
       if (inputHost.value.includes("localhost")) inputHost.value = `ws://${ips[0]}:${st.port}`;
+      // tunnel info no login
+      if (st.tunnel?.running && st.tunnel?.url) {
+        tunnelBox.style.display = "";
+        tunnelBox.innerHTML = `🌐 <b>Túnel internet ativo:</b> <code style="color:#00a8fc">${st.tunnel.url}</code> → <code>${st.tunnel.wsUrl}</code> <button class="btn tiny ghost" onclick="navigator.clipboard.writeText('${st.tunnel.wsUrl}')">copiar</button>`;
+      } else {
+        tunnelBox.style.display = "none";
+      }
+      updateInviteModal(st, ips);
     } else {
       hostStatusLine.textContent = "Parado";
       hostStatusLine.style.color = "#f23f43";
       btnStartHost.style.display = ""; btnStopHost.style.display = "none";
       hostIpsEl.textContent = ips.length ? `Seu IP local: ${ips.join(", ")}` : "";
+      tunnelBox.style.display = "none";
     }
   } catch {}
 }
@@ -86,9 +95,13 @@ btnStartHost?.addEventListener("click", async () => {
   const api: any = (window as any).electronAPI;
   if (!api) return toast("Hospedagem só no app desktop (.exe)");
   const port = parseInt((inputPort as HTMLInputElement).value) || 8765;
-  await api.startHost(port);
-  await refreshHostStatus();
-  toast(`Servidor iniciado na porta ${port}`);
+  try {
+    await api.startHost(port);
+    await refreshHostStatus();
+    toast(`Servidor iniciado na porta ${port}`);
+    // auto libera firewall em background
+    api.allowFirewall(port).then((r: any) => { if (r?.ok) toast("Firewall liberado ✓"); }).catch(()=>{});
+  } catch (e: any) { toast(e?.message || "Falha ao iniciar"); }
 });
 btnStopHost?.addEventListener("click", async () => {
   const api: any = (window as any).electronAPI;
@@ -98,27 +111,149 @@ btnStopHost?.addEventListener("click", async () => {
 });
 qs("#btn-host-config")?.addEventListener("click", () => {
   loginOverlay.classList.remove("hidden");
-  // scroll to host box? just ensure visible
 });
 qs("#btn-invite")?.addEventListener("click", async () => {
-  const ips = (window as any).electronAPI ? await (window as any).electronAPI.getIPs() : [];
-  const st = (window as any).electronAPI ? await (window as any).electronAPI.getHostStatus() : null;
-  let invite = inputHost.value.trim();
-  if (st?.running && ips[0]) invite = `ws://${ips[0]}:${st.port}`;
-  if (navigator.clipboard) await navigator.clipboard.writeText(invite).catch(()=>{});
-  toast(`Convite copiado: ${invite}`);
+  await openInviteModal();
 });
 qs("#btn-test-host")?.addEventListener("click", async () => {
-  const url = inputHost.value.trim().replace(/^ws:\/\//, "http://").replace(/\/$/, "") + "/health";
-  try {
-    const r = await fetch(url, { signal: AbortSignal.timeout(3000) } as any);
-    const j = await r.json();
-    toast(j.ok ? `Host online — ${j.clients} conectados` : "Host respondeu mas com erro");
-  } catch { toast("Não consegui alcançar o host. Verifique IP/porta e firewall."); }
+  await testHostConnection(inputHost.value.trim());
 });
+async function testHostConnection(rawUrl: string) {
+  const url = normalizeHostUrl(rawUrl);
+  const httpUrl = url.replace(/^ws:\/\//, "http://").replace(/^wss:\/\//, "https://").replace(/\/$/, "") + "/health";
+  try {
+    const r = await fetch(httpUrl, { signal: AbortSignal.timeout(5000) } as any);
+    const j: any = await r.json().catch(()=> ({}));
+    toast(j.ok ? `Host online ✓ — ${j.clients ?? 0} conectados` : "Host respondeu ✓");
+    return true;
+  } catch {
+    // tenta WS direto
+    try {
+      await new Promise<void>((res, rej) => {
+        const ws2 = new WebSocket(url);
+        const t = setTimeout(()=> { try{ ws2.close(); }catch{}; rej(new Error("timeout")); }, 5000);
+        ws2.onopen = () => { clearTimeout(t); ws2.close(); res(); };
+        ws2.onerror = () => { clearTimeout(t); rej(new Error("ws error")); };
+      });
+      toast(`WS ok em ${url} ✓`);
+      return true;
+    } catch { toast(`Não consegui alcançar ${url}. Verifique IP/porta/firewall ou use o túnel.`); return false; }
+  }
+}
 
 // init host status poll
 refreshHostStatus(); setInterval(refreshHostStatus, 3000);
+
+// ---------- Invite modal ----------
+function updateInviteModal(st: any, ips: string[]) {
+  const port = st?.port || parseInt((inputPort as HTMLInputElement).value) || 8765;
+  (qs("#invite-port") as HTMLElement).textContent = String(port);
+  const list = qs("#invite-local-list") as HTMLElement;
+  list.innerHTML = "";
+  for (const ip of ips) {
+    const url = `ws://${ip}:${port}`;
+    const row = document.createElement("div");
+    row.style.display = "flex"; row.style.alignItems = "center"; row.style.gap = "8px"; row.style.background = "#1e1f22"; row.style.padding = "6px 8px"; row.style.borderRadius = "8px"; row.style.border = "1px solid #232428";
+    row.innerHTML = `<code style="flex:1; color:#00a8fc; font-size:12px">${url}</code><button class="btn tiny ghost" data-copy="${url}">copiar</button>`;
+    row.querySelector("button")?.addEventListener("click", async () => {
+      await navigator.clipboard.writeText(url).catch(()=>{});
+      toast(`Copiado: ${url}`);
+      inputHost.value = url;
+    });
+    list.appendChild(row);
+  }
+  const tInfo = qs("#invite-tunnel-info") as HTMLElement;
+  const btnStart = qs("#btn-tunnel-start") as HTMLElement;
+  const btnStop = qs("#btn-tunnel-stop") as HTMLElement;
+  const btnCopy = qs("#btn-tunnel-copy") as HTMLElement;
+  const btnTest = qs("#btn-test-tunnel") as HTMLElement;
+  if (st?.tunnel?.running && st?.tunnel?.wsUrl) {
+    tInfo.innerHTML = `✅ <b>Túnel ativo:</b> <code style="color:#00a8fc">${st.tunnel.url}</code><br>Convite internet: <code style="color:#57F287">${st.tunnel.wsUrl}</code><br><span class="hint">Envie o <b>wss://</b> para amigos de outra rede — funciona sem liberar porta.</span>`;
+    btnStart.style.display = "none"; btnStop.style.display = ""; btnCopy.style.display = ""; btnTest.style.display = "";
+  } else {
+    tInfo.textContent = "Túnel parado — clique em “Expor na internet” para gerar o link.";
+    btnStart.style.display = ""; btnStop.style.display = "none"; btnCopy.style.display = "none"; btnTest.style.display = "none";
+  }
+}
+async function openInviteModal() {
+  const api: any = (window as any).electronAPI;
+  const st = api ? await api.getHostStatus().catch(()=> null) : null;
+  const ips = api ? await api.getIPs().catch(()=> []) : [];
+  if (!st?.running) {
+    toast("Inicie o servidor primeiro em Hospedar → Iniciar servidor");
+    loginOverlay.classList.remove("hidden");
+    return;
+  }
+  updateInviteModal(st, ips);
+  (qs("#modal-invite") as HTMLDialogElement).showModal();
+}
+qs("#btn-invite-close")?.addEventListener("click", () => (qs("#modal-invite") as HTMLDialogElement).close());
+qs("#btn-invite-local-copy")?.addEventListener("click", async () => {
+  const api: any = (window as any).electronAPI;
+  const st = await api.getHostStatus(); const ips = await api.getIPs();
+  const url = `ws://${ips[0]}:${st.port}`;
+  await navigator.clipboard.writeText(url).catch(()=>{});
+  toast(`Copiado: ${url}`);
+});
+qs("#btn-test-local")?.addEventListener("click", async () => {
+  const api: any = (window as any).electronAPI;
+  const st = await api.getHostStatus(); const ips = await api.getIPs();
+  const url = `ws://${ips[0]}:${st.port}`;
+  const ok = await testHostConnection(url);
+  (qs("#invite-local-test") as HTMLElement).textContent = ok ? "✅ Local acessível na sua rede" : "❌ Não acessível — verifique mesma Wi-Fi/firewall";
+});
+qs("#btn-tunnel-start")?.addEventListener("click", async () => {
+  const api: any = (window as any).electronAPI;
+  const port = parseInt((inputPort as HTMLInputElement).value) || 8765;
+  (qs("#invite-tunnel-info") as HTMLElement).textContent = "Criando túnel… (pode levar 5-10s na primeira vez)";
+  (qs("#btn-tunnel-start") as HTMLButtonElement).disabled = true;
+  try {
+    const res = await api.startTunnel(port);
+    toast(`Túnel criado: ${res.url}`);
+    await refreshHostStatus();
+    const st = await api.getHostStatus(); const ips = await api.getIPs();
+    updateInviteModal(st, ips);
+  } catch (e: any) {
+    (qs("#invite-tunnel-info") as HTMLElement).textContent = "Erro ao criar túnel: " + (e?.message || e);
+    toast("Falha no túnel — tente de novo ou verifique internet");
+  } finally { (qs("#btn-tunnel-start") as HTMLButtonElement).disabled = false; }
+});
+qs("#btn-tunnel-stop")?.addEventListener("click", async () => {
+  const api: any = (window as any).electronAPI;
+  await api.stopTunnel().catch(()=>{});
+  await refreshHostStatus();
+  const st = await api.getHostStatus(); const ips = await api.getIPs();
+  updateInviteModal(st, ips);
+  toast("Túnel parado");
+});
+qs("#btn-tunnel-copy")?.addEventListener("click", async () => {
+  const api: any = (window as any).electronAPI;
+  const st = await api.getHostStatus();
+  const url = st?.tunnel?.wsUrl || st?.tunnel?.url;
+  if (!url) return;
+  const wsUrl = url.startsWith("https://") ? "wss://" + url.slice(8) : url;
+  await navigator.clipboard.writeText(wsUrl).catch(()=>{});
+  toast(`Copiado: ${wsUrl}`);
+  inputHost.value = wsUrl;
+});
+qs("#btn-test-tunnel")?.addEventListener("click", async () => {
+  const api: any = (window as any).electronAPI;
+  const st = await api.getHostStatus();
+  const url = st?.tunnel?.wsUrl;
+  if (!url) return;
+  const ok = await testHostConnection(url);
+  (qs("#invite-tunnel-test") as HTMLElement).textContent = ok ? "✅ Túnel acessível pela internet" : "❌ Túnel não respondeu — aguarde 5s e teste de novo";
+});
+qs("#btn-firewall")?.addEventListener("click", async () => {
+  const api: any = (window as any).electronAPI;
+  const port = parseInt((inputPort as HTMLInputElement).value) || 8765;
+  (qs("#firewall-status") as HTMLElement).textContent = "Liberando…";
+  try {
+    const r = await api.allowFirewall(port);
+    (qs("#firewall-status") as HTMLElement).textContent = r.ok ? "✅ Liberado" : "❌ " + r.output.slice(0, 120);
+    toast(r.ok ? "Firewall liberado ✓" : "Execute como Administrador para liberar");
+  } catch (e: any) { (qs("#firewall-status") as HTMLElement).textContent = String(e); }
+});
 
 // ---------- Connect ----------
 btnConnect.addEventListener("click", connect);
@@ -146,30 +281,53 @@ async function connect() {
   }
 }
 
-function connectWS(url: string, username: string): Promise<void> {
+function normalizeHostUrl(raw: string): string {
+  let s = raw.trim();
+  if (!s) return "ws://localhost:8765";
+  // aceita https://xxx.loca.lt -> converte para wss
+  if (s.startsWith("https://")) s = "wss://" + s.slice(8);
+  if (s.startsWith("http://")) s = "ws://" + s.slice(7);
+  if (!s.startsWith("ws://") && !s.startsWith("wss://")) s = "ws://" + s;
+  // remove barra final
+  s = s.replace(/\/$/, "");
+  // se tem / tenta limpar path extra (mantém só host:port)
+  return s;
+}
+function prettyInviteError(url: string, attempt: number): string {
+  const isLocal = url.includes("192.168.") || url.includes("10.") || url.includes("172.") || url.includes("localhost") || url.includes("127.0.0.1");
+  if (attempt > 1) return `Tempo esgotado (${attempt} tentativas).`;
+  if (isLocal) return `Tempo esgotado em ${url}. Dicas: 1) Host clicou em Iniciar servidor? 2) Mesma Wi-Fi? 3) Firewall liberado? Use “Expor na internet” para jogar com amigos de outra rede.`;
+  return `Tempo esgotado em ${url}. Se for túnel (loca.lt), aguarde 5s e tente de novo — ou clique em Verificar.`;
+}
+let connectAttempts = 0;
+function connectWS(rawUrl: string, username: string): Promise<void> {
+  const url = normalizeHostUrl(rawUrl);
   return new Promise((resolve, reject) => {
     if (ws) try { ws.close(); } catch {}
     ws = new WebSocket(url);
     let opened = false;
-    const timeout = setTimeout(() => { if (!opened) { try{ ws?.close(); }catch{} reject(new Error("Tempo esgotado. Verifique se o host iniciou o servidor e liberou o firewall.")); } }, 6000);
+    connectAttempts++;
+    const curAttempt = connectAttempts;
+    // timeout maior: 15s (NAT/túnel demora) + diagnostico
+    const timeout = setTimeout(() => { if (!opened) { try{ ws?.close(); }catch{} reject(new Error(prettyInviteError(url, curAttempt))); } }, 15000);
     ws.onopen = () => {
       opened = true; clearTimeout(timeout);
+      connectAttempts = 0;
       ws!.send(JSON.stringify({ op: "hello", username }));
     };
     ws.onmessage = (ev) => handleWSMessage(ev.data, resolve, reject);
-    ws.onerror = () => { if (!opened) { clearTimeout(timeout); reject(new Error("Não consegui conectar ao host")); } };
+    ws.onerror = () => { if (!opened) { clearTimeout(timeout); reject(new Error(`Não consegui conectar em ${url} — host offline ou porta bloqueada`)); } };
     ws.onclose = () => {
       if (connected) {
         connected = false;
         setConn(false);
         toast("Desconectado do servidor");
-        // show login again
         loginOverlay.classList.remove("hidden");
         appEl.classList.add("hidden");
         btnConnect.textContent = "Entrar no Nexus →";
         (btnConnect as HTMLButtonElement).disabled = false;
       } else if (!opened) {
-        clearTimeout(timeout); reject(new Error("Conexão fechada"));
+        clearTimeout(timeout); reject(new Error("Conexão fechada antes de autenticar"));
       }
     };
   });
