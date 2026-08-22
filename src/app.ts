@@ -34,7 +34,14 @@ const peers = new Map<string, RTCPeerConnection>();
 const remoteAudios = new Map<string, HTMLAudioElement>();
 const remoteVideos = new Map<string, HTMLVideoElement>();
 
-const iceServers: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }];
+const iceServers: RTCIceServer[] = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "stun:stun.metered.ca:80" },
+  { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
+];
 
 function toast(msg: string) {
   const c = qs("#toast");
@@ -1136,8 +1143,55 @@ window.addEventListener("keydown", (e) => {
 
 // members toggle
 qs("#btn-toggle-members")?.addEventListener("click", () => {
-  const m = qs("#members");
-  m.style.display = m.style.display==="none" ? "" : "none";
+  const m = qs("#members") as HTMLElement;
+  const isHidden = m.style.display==="none" || getComputedStyle(m).display==="none";
+  m.style.display = isHidden ? "" : "none";
+  // on mobile, app grid adjusts via media query, so we toggle with important
+  if (isHidden) m.style.display = "block";
+});
+
+// server menu (copy code, rename, invite)
+qs("#btn-server-menu")?.addEventListener("click", (e) => {
+  const srv = servers.find(s=> s.id===activeServerId);
+  if (!srv) return toast("Selecione um servidor");
+  const action = prompt(`Servidor: ${srv.name}\nCódigo: ${srv.code}\n\nDigite:\n1 = Copiar código\n2 = Copiar convite local\n3 = Abrir convite (túnel)\n4 = Renomear\n\nEscolha (1-4):`, "1");
+  if (action==="1") { navigator.clipboard.writeText(srv.code).then(()=> toast(`Código ${srv.code} copiado`)); }
+  else if (action==="2") {
+    (async()=> {
+      const api:any=(window as any).electronAPI;
+      const ips=api?await api.getIPs():[];
+      const port=(qs("#input-port") as HTMLInputElement).value||"8765";
+      const url=`ws://${ips[0]||"localhost"}:${port}`;
+      await navigator.clipboard.writeText(url);
+      toast(`Convite copiado: ${url}`);
+    })();
+  } else if (action==="3") { openInviteModal(); }
+  else if (action==="4") {
+    const name=prompt("Novo nome:", srv.name);
+    if (name) { srv.name=name; renderServers(); toast("Servidor renomeado localmente (recria ao reiniciar)"); }
+  }
+});
+
+// settings (audio devices, quality, logout)
+qs("#btn-settings")?.addEventListener("click", async () => {
+  const devices = await navigator.mediaDevices.enumerateDevices().catch(()=> []);
+  const mics = devices.filter(d=> d.kind==="audioinput").map(d=> d.label||d.deviceId.slice(0,8)).join("\n") || "Nenhum microfone detectado";
+  const choice = prompt(`Configurações — Nexus Chat\n\nMicrofones:\n${mics}\n\nQualidade atual: ${selectedQuality} @ ${selectedFps}fps\n\n1 = Trocar qualidade\n2 = Desconectar e voltar ao login\n3 = Limpar dados locais\n\nEscolha:`, "1");
+  if (choice==="1") {
+    const q=prompt("Qualidade: 480p30, 720p30, 1080p30, 1080p60, source", selectedQuality);
+    if (q) { selectedQuality=q; (qs("#select-quality") as HTMLSelectElement).value=q; applyQualityToSenders(); toast(`Qualidade: ${q}`); }
+  } else if (choice==="2") {
+    try{ ws?.close(); }catch{}
+    connected=false;
+    loginOverlay.classList.remove("hidden"); appEl.classList.add("hidden");
+    toast("Desconectado");
+  } else if (choice==="3") {
+    if (confirm("Limpar cache e recarregar?")) { localStorage.clear(); location.reload(); }
+  }
+});
+qs("#rail-home")?.addEventListener("click", () => {
+  loginOverlay.classList.remove("hidden");
+  toast("Voltar ao início");
 });
 
 // tiny quality btn in stage
