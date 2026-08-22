@@ -95,19 +95,57 @@ export function setupUpdater(getWin: () => BrowserWindow | null) {
   }
 }
 
-// Fallback: consulta GitHub Releases API pública
-async function checkGitHubAPI(): Promise<{ hasUpdate: boolean; latest?: string; current: string; url?: string }> {
+// Fallback: consulta GitHub Releases API pública + raw + git (funciona mesmo com repo privado)
+async function checkGitHubAPI(): Promise<{ hasUpdate: boolean; latest?: string; current: string; url?: string; isPrivate?: boolean; note?: string }> {
   const current = app.getVersion();
   try {
+    // 1) tenta releases/latest (público)
     const res = await fetch("https://api.github.com/repos/gabrielrambo-dev-code/nexus-chat/releases/latest", {
       headers: { "Accept": "application/vnd.github.v3+json", "User-Agent": "nexus-chat" } as any,
     } as any);
-    if (!res.ok) return { hasUpdate: false, current };
-    const j: any = await res.json();
-    const latest = (j.tag_name || j.name || "").replace(/^v/, "");
-    const hasUpdate = latest && latest !== current;
-    return { hasUpdate, latest, current, url: j.html_url };
-  } catch { return { hasUpdate: false, current }; }
+    if (res.ok) {
+      const j: any = await res.json();
+      const latest = (j.tag_name || j.name || "").replace(/^v/, "");
+      const hasUpdate = latest && latest !== current;
+      return { hasUpdate, latest, current, url: j.html_url };
+    }
+    // 2) se 404, pode ser repo privado — tenta raw package.json via git ls-remote fallback
+    if (res.status === 404) {
+      // tenta buscar versão remota via git (funciona mesmo privado se já tem credencial)
+      const remoteVer = await getRemoteVersionViaGit().catch(() => null);
+      if (remoteVer) {
+        const hasUpdate = remoteVer !== current;
+        return { hasUpdate, latest: remoteVer, current, isPrivate: true, note: "Repo privado — atualização via git. Torne o repo público para Releases automáticas." };
+      }
+      // tenta raw public (se tornar público, vai funcionar)
+      try {
+        const raw = await fetch("https://raw.githubusercontent.com/gabrielrambo-dev-code/nexus-chat/main/package.json", { headers: { "User-Agent": "nexus-chat" } as any } as any);
+        if (raw.ok) {
+          const pj: any = await raw.json();
+          const latest = (pj.version || "").replace(/^v/, "");
+          return { hasUpdate: latest && latest !== current, latest, current, isPrivate: true };
+        }
+      } catch {}
+      return { hasUpdate: false, current, isPrivate: true, note: "Repo privado ou sem releases — use git pull ou publique uma Release no GitHub" };
+    }
+  } catch {}
+  return { hasUpdate: false, current };
+}
+
+async function getRemoteVersionViaGit(): Promise<string | null> {
+  return new Promise((resolve) => {
+    exec("git ls-remote https://github.com/gabrielrambo-dev-code/nexus-chat.git HEAD", { timeout: 8000 }, (err, stdout) => {
+      if (err || !stdout) return resolve(null);
+      // Não dá para pegar version só com ls-remote; tenta fetch + show
+      exec("git show origin/main:package.json 2>nul | findstr version", { timeout: 8000 }, (_e2, out2) => {
+        if (out2) {
+          const m = out2.match(/\"version\"\s*:\s*\"([^\"]+)\"/);
+          if (m) return resolve(m[1]);
+        }
+        resolve(null);
+      });
+    });
+  });
 }
 
 async function checkGitUpdate(): Promise<any> {
