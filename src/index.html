@@ -18,11 +18,13 @@
         <span id="titlebar-status" class="titlebar-status">— desconectado</span>
       </div>
       <div class="titlebar-right">
-        <button id="btn-update" class="tbtn" title="Verificar atualização">⬇️ Atualizar</button>
+        <button id="btn-invite" class="tbtn primary" title="Convidar amigos (Ctrl+I)" style="background:#23a559; border-color:#1a7f43; color:white;">🔗 Convidar</button>
         <button id="btn-host-config" class="tbtn" title="Configurar host">⚙️ Hospedar</button>
-        <button id="btn-invite" class="tbtn" title="Copiar convite">🔗 Convite</button>
+        <button id="btn-update" class="tbtn" title="Verificar atualização">⬇️ Atualizar</button>
       </div>
     </div>
+    <!-- Botão flutuante de emergência caso titlebar quebre -->
+    <button id="btn-invite-float" title="Convidar amigos (Ctrl+I)" style="position:fixed; bottom:20px; right:20px; z-index:40; background:#23a559; color:white; border:none; padding:14px 18px; border-radius:999px; font-weight:800; box-shadow:0 8px 24px rgba(0,0,0,.35); cursor:pointer; display:flex; align-items:center; gap:8px;">🔗 Convidar Amigos</button>
 
     <div id="login-overlay" class="overlay">
       <div class="login-card">
@@ -79,7 +81,10 @@
       <aside id="sidebar">
         <div id="server-header">
           <span id="server-name">—</span>
-          <button id="btn-server-menu" class="icon-btn">▾</button>
+          <div style="display:flex; gap:4px;">
+            <button id="btn-invite-sidebar" class="icon-btn" title="Convidar amigos" style="background:#23a559; color:white; padding:6px 10px; border-radius:8px; font-weight:700;">🔗 Convidar</button>
+            <button id="btn-server-menu" class="icon-btn">▾</button>
+          </div>
         </div>
         <div class="sidebar-scroll">
           <div class="chan-group">

@@ -119,8 +119,14 @@ btnStopHost?.addEventListener("click", async () => {
 qs("#btn-host-config")?.addEventListener("click", () => {
   loginOverlay.classList.remove("hidden");
 });
-qs("#btn-invite")?.addEventListener("click", async () => {
-  await openInviteModal();
+async function handleInviteClick() { await openInviteModal(); }
+qs("#btn-invite")?.addEventListener("click", handleInviteClick);
+qs("#btn-invite-float")?.addEventListener("click", handleInviteClick);
+qs("#btn-invite-sidebar")?.addEventListener("click", handleInviteClick);
+// atalho Ctrl+I e F1 pra convidar — funciona mesmo se UI quebrar
+window.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "i") { e.preventDefault(); handleInviteClick(); }
+  if (e.key === "F1") { e.preventDefault(); handleInviteClick(); }
 });
 qs("#btn-test-host")?.addEventListener("click", async () => {
   await testHostConnection(inputHost.value.trim());

@@ -32,11 +32,13 @@ button, input, select { font: inherit; }
 
 .hidden { display: none !important; }
 
-/* Titlebar */
+/* Titlebar — não quebra, botões sempre visíveis */
 #titlebar {
-  height: 32px; background: var(--bg-rail); display: flex; align-items: center; justify-content: space-between;
-  padding: 0 12px; border-bottom: 1px solid #000; -webkit-app-region: drag; user-select: none; flex-shrink: 0;
+  height: 34px; background: var(--bg-rail); display: flex; align-items: center; justify-content: space-between;
+  padding: 0 10px; border-bottom: 1px solid #000; -webkit-app-region: drag; user-select: none; flex-shrink: 0; gap: 8px; overflow: hidden;
 }
+#titlebar * { flex-shrink: 0; }
+#titlebar .titlebar-left { flex-shrink: 1; min-width: 0; overflow: hidden; }
 .titlebar-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .traffic { display: flex; gap: 6px; flex-shrink: 0; }
 .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
